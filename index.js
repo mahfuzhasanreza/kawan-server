@@ -12,6 +12,7 @@ const port = process.env.PORT || 5000;
 app.use(cors({
     origin: ['http://localhost:5173',
         'http://kawan-one.vercel.app',
+        'https://kawan-assist.web.app',
     ],
     credentials: true
 }));
@@ -20,7 +21,7 @@ app.use(cookieParser());
 
 
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.g0bvt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tdfgd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -31,53 +32,24 @@ const client = new MongoClient(uri, {
     }
 });
 
-// const verifyToken = (req, res, next) => {
-//     const token = req?.cookies?.token;
-//     if (!token) {
-//         return res.status(401).send({ message: 'unAuthorized access' })
-//     }
-
-//     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-//         if (err) {
-//             return res.status(401).send({ message: 'unauthorized access' })
-//         }
-//         req.user = decoded;
-//         next();
-//     })
-
-// }
-
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
-        // await client.connect();
 
-        const foodCollection = client.db('foodDB').collection('food');
-        const requestedFoodCollection = client.db('foodDB').collection('requestedFoods');
+        const professionalsCollection = client.db('kawanDB').collection('professionals');
+        const requestedFoodCollection = client.db('kawanDB').collection('requestedFoods');
 
-        // // Auth related APIs
-        // app.post('/jwt', async (req, res) => {
-        //     const user = req.body;
-        //     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '5h' });
+        app.post('/professionals', async (req, res) => {
+            const newProfessional = req.body;
+            const result = await professionalsCollection.insertOne(newProfessional);
+            res.send(result);
+        })
 
-        //     res
-        //         .cookie('token', token, {
-        //             httpOnly: true,
-        //             secure: process.env.NODE_ENV === "production",
-        //             sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        //         })
-        //         .send({ success: true })
-
-        // });
-
-        // app.post('/logout', (req, res) => {
-        //     res.clearCookie('token', {
-        //         httpOnly: true,
-        //         secure: process.env.NODE_ENV === "production",
-        //         sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        //     })
-        //         .send({ success: true })
-        // })
+        app.get('/professional/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: new ObjectId(email) }
+            const result = await foodCollection.findOne(query);
+            res.send(result);
+        })
 
         app.post('/request-food', async (req, res) => {
             const {
@@ -178,12 +150,7 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/food/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) }
-            const result = await foodCollection.findOne(query);
-            res.send(result);
-        })
+        
         
 
 
@@ -221,13 +188,7 @@ async function run() {
 
 
 
-        app.post('/food', async (req, res) => {
-            const newFood = req.body;
-            // console.log(newFood);
-
-            const result = await foodCollection.insertOne(newFood);
-            res.send(result);
-        })
+        
 
 
         app.delete('/food/:id', async (req, res) => {
