@@ -1,6 +1,11 @@
 
 require('dotenv').config();
 const express = require('express');
+
+
+const path = require('path');
+const multer = require('multer');
+
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
@@ -20,7 +25,6 @@ app.use(express.json());
 app.use(cookieParser());
 
 
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tdfgd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -32,12 +36,37 @@ const client = new MongoClient(uri, {
     }
 });
 
+
+const UPLOAD_FOLDER = "./uploads";
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, UPLOAD_FOLDER);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const fileName = file.originalname
+            .replace(ext, "")
+            .toLowerCase()
+            .split(" ")
+            .join("-") + "-" + Date.now();
+        cb(null, fileName + ext);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+});
+
+
+
 async function run() {
     try {
 
         const professionalsCollection = client.db('kawanDB').collection('professionals');
         const contactCollection = client.db('kawanDB').collection('contact');
         const coinCollection = client.db('kawanDB').collection('coin');
+        const verifyRequestCollection = client.db('kawanDB').collection('verify-request');
         const requestedFoodCollection = client.db('kawanDB').collection('requestedFoods');
 
 
@@ -47,6 +76,11 @@ async function run() {
             res.send(result);
         })
 
+        app.post('/professionals-verify-request', async (req, res) => {
+            const verifyReq = req.body;
+            const result = await verifyRequestCollection.insertOne(verifyReq);
+            res.send(result);
+        })
 
         app.post('/contact', async (req, res) => {
             const contact = req.body;
@@ -59,7 +93,7 @@ async function run() {
             const result = await coinCollection.insertOne(coin);
             res.send(result);
         })
-        
+
         // app.get('/professionals/:email', async (req, res) => {
         //     const email = req.params.email;
         //     const query = { email: new ObjectId(email) }
@@ -69,21 +103,50 @@ async function run() {
 
         app.get('/professionals/:email', async (req, res) => {
             const email = req.params.email; // Extract email from the route parameter
-            const query = { email: email }; // Use email as a string for the query
+            const query = { email }; // Use shorthand for email in the query
+
             try {
                 const result = await professionalsCollection.findOne(query); // Query the collection
-                if (result && result.isVerify) {
-                    res.send(2); // Send true if found
-                } else if (result){
-                    res.send(1);
-                } else {
-                    res.send(0); // Send false if not found
+
+                if (result) {
+                    // Check if the professional is verified
+                    if (result.isVerify) {
+                        return res.status(200).send({ status: 2, message: 'Verified professional' }); // Verified
+                    } else {
+                        return res.status(200).send({ status: 1, message: 'Unverified professional' }); // Unverified
+                    }
                 }
+
+                // No matching professional found
+                res.status(404).send({ status: 0, message: 'Professional not found' });
+
             } catch (error) {
-                console.error('Error fetching professional:', error); // Log any errors
-                res.status(500).send({ message: 'Internal server error' }); // Send server error response
+                console.error('Error fetching professional:', error); // Log any errors for debugging
+                res.status(500).send({ message: 'Internal server error', error: error.message }); // Send server error response
             }
-        });                
+        });
+
+        app.get('/check-verify-req/:email', async (req, res) => {
+            const email = req.params.email; // Extract email from the route parameter
+            const query = { email }; // Use shorthand for email in the query
+
+            try {
+                const result = await verifyRequestCollection.findOne(query); // Query the collection
+
+                if (result) {
+
+                    return res.status(200).send({ status: 1, message: 'Verified professional' });
+                } else {
+                    return res.status(200).send({ status: 0, message: 'Unverified professional' });
+                }
+                
+                res.status(404).send({ status: 0, message: 'Professional not found' });
+            } catch (error) {
+                console.error('Error fetching professional:', error);
+                res.status(500).send({ message: 'Internal server error', error: error.message });
+            }
+        });
+
 
         app.post('/request-food', async (req, res) => {
             const {
@@ -140,7 +203,7 @@ async function run() {
                     res.status(500).send({ message: 'Failed to request food' });
                 }
             } catch (error) {
-              //  console.error('Error requesting food:', error);
+                //  console.error('Error requesting food:', error);
                 res.status(500).send({ message: 'Internal server error' });
             }
         });
@@ -163,7 +226,7 @@ async function run() {
                 const foodRequests = await requestedFoodCollection.find({ userEmail }).toArray();
                 res.json(foodRequests);
             } catch (error) {
-              //  console.error('Error fetching food requests:', error);
+                //  console.error('Error fetching food requests:', error);
                 res.status(500).json({ error: 'Failed to fetch food requests' });
             }
         });
@@ -184,8 +247,8 @@ async function run() {
             res.send(result);
         })
 
-        
-        
+
+
 
 
         app.put('/food/:id', async (req, res) => {
@@ -215,14 +278,14 @@ async function run() {
                 const result = await foodCollection.updateOne(filter, foodUpdate, options);
                 res.send(result);
             } catch (error) {
-             //   console.error(error);
+                //   console.error(error);
                 res.status(500).send({ error: 'Failed to update food' });
             }
         });
 
 
 
-        
+
 
 
         app.delete('/food/:id', async (req, res) => {
