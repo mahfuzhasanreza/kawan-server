@@ -36,7 +36,10 @@ async function run() {
     try {
 
         const professionalsCollection = client.db('kawanDB').collection('professionals');
+        const contactCollection = client.db('kawanDB').collection('contact');
+        const coinCollection = client.db('kawanDB').collection('coin');
         const requestedFoodCollection = client.db('kawanDB').collection('requestedFoods');
+
 
         app.post('/professionals', async (req, res) => {
             const newProfessional = req.body;
@@ -44,12 +47,43 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/professional/:email', async (req, res) => {
-            const email = req.params.email;
-            const query = { email: new ObjectId(email) }
-            const result = await foodCollection.findOne(query);
+
+        app.post('/contact', async (req, res) => {
+            const contact = req.body;
+            const result = await contactCollection.insertOne(contact);
             res.send(result);
         })
+
+        app.post('/coin', async (req, res) => {
+            const coin = req.body;
+            const result = await coinCollection.insertOne(coin);
+            res.send(result);
+        })
+        
+        // app.get('/professionals/:email', async (req, res) => {
+        //     const email = req.params.email;
+        //     const query = { email: new ObjectId(email) }
+        //     const result = await professionalsCollection.findOne(query);
+        //     res.send(result);
+        // })
+
+        app.get('/professionals/:email', async (req, res) => {
+            const email = req.params.email; // Extract email from the route parameter
+            const query = { email: email }; // Use email as a string for the query
+            try {
+                const result = await professionalsCollection.findOne(query); // Query the collection
+                if (result && result.isVerify) {
+                    res.send(2); // Send true if found
+                } else if (result){
+                    res.send(1);
+                } else {
+                    res.send(0); // Send false if not found
+                }
+            } catch (error) {
+                console.error('Error fetching professional:', error); // Log any errors
+                res.status(500).send({ message: 'Internal server error' }); // Send server error response
+            }
+        });                
 
         app.post('/request-food', async (req, res) => {
             const {
