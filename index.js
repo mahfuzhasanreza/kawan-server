@@ -67,7 +67,89 @@ async function run() {
         const contactCollection = client.db('kawanDB').collection('contact');
         const coinCollection = client.db('kawanDB').collection('coin');
         const verifyRequestCollection = client.db('kawanDB').collection('verify-request');
+        const verifiedCollection = client.db('kawanDB').collection('verified-professionals');
+        const reqCounsellingCollection = client.db('kawanDB').collection('req-counselling');
+        const acceptCounsellingCollection = client.db('kawanDB').collection('acc-counselling');
+        const allDoneCounsellingCollection = client.db('kawanDB').collection('all-counselling');
+
         const requestedFoodCollection = client.db('kawanDB').collection('requestedFoods');
+
+
+        app.get('/verify-professionals-list', async (req, res) => {
+            const cursor = verifiedCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
+        })
+
+        
+
+        app.delete('/professionals-manage/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };  // Use email directly as a string, no need for ObjectId
+            try {
+                const result = await verifiedCollection.deleteOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error deleting item", error });
+            }
+        });
+
+
+        app.post('/professionals-manage', async (req, res) => {
+            try {
+                const verifyReq = req.body;
+                // Insert the verified professional into the 'verifiedCollection' database collection
+                const result = await verifiedCollection.insertOne(verifyReq);
+                
+                if (result.acknowledged) {
+                    res.status(200).send({ message: 'Professional accepted and stored successfully', result });
+                } else {
+                    res.status(500).send({ message: 'Failed to store professional data' });
+                }
+            } catch (error) {
+                console.error("Error inserting data:", error);
+                res.status(500).send({ message: 'Error storing professional data' });
+            }
+        }); 
+        
+        
+
+        app.get('/req-professionals', async (req, res) => {
+            const cursor = verifyRequestCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
+        })
+
+        app.get('/contact', async (req, res) => {
+            const cursor = contactCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
+        })
+
+
+        app.delete('/contact/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };  // Use email directly as a string, no need for ObjectId
+            try {
+                const result = await contactCollection.deleteOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error deleting item", error });
+            }
+        });
+
+
+        app.delete('/req-professionals/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };  // Use email directly as a string, no need for ObjectId
+            try {
+                const result = await verifyRequestCollection.deleteOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error deleting item", error });
+            }
+        });
+
 
 
         app.post('/professionals', async (req, res) => {
@@ -75,6 +157,143 @@ async function run() {
             const result = await professionalsCollection.insertOne(newProfessional);
             res.send(result);
         })
+
+        
+        app.post('/req-counselling', async (req, res) => {
+            const counselling = req.body;
+            const result = await reqCounsellingCollection.insertOne(counselling);
+            res.send(result);
+        })
+
+        
+        app.post('/live', async (req, res) => {
+            const counselling = req.body;
+            const result = await acceptCounsellingCollection.insertOne(counselling);
+            res.send(result);
+        })
+
+
+        app.get('/live-details-user/:email', async (req, res) => {
+            const userEmail = req.params.email;
+            console.log(`Fetching counselling requests for: ${userEmail}`);  // Add logging here
+            try {
+                const counselling = await acceptCounsellingCollection.find({ userEmail }).toArray();
+                if (counselling.length === 0) {
+                    console.log('No counselling requests found for this professional');
+                }
+                res.json(counselling);
+            } catch (error) {
+                console.error('Error fetching counselling requests:', error);
+                res.status(500).json({ error: 'Failed to fetch counselling requests' });
+            }
+        });
+
+        app.get('/live-details-professor/:email', async (req, res) => {
+            const professionalEmail = req.params.email;
+            console.log(`Fetching counselling requests for: ${professionalEmail}`);  // Add logging here
+            try {
+                const counselling = await acceptCounsellingCollection.find({ professionalEmail }).toArray();
+                if (counselling.length === 0) {
+                    console.log('No counselling requests found for this professional');
+                }
+                res.json(counselling);
+            } catch (error) {
+                console.error('Error fetching counselling requests:', error);
+                res.status(500).json({ error: 'Failed to fetch counselling requests' });
+            }
+        });
+
+        app.get('/req-live-u/:email', async (req, res) => {
+            const userEmail = req.params.email;
+            console.log(`Fetching counselling requests for: ${userEmail}`);  // Add logging here
+            try {
+                const counselling = await reqCounsellingCollection.find({ userEmail }).toArray();
+                if (counselling.length === 0) {
+                    console.log('No counselling requests found for this professional');
+                }
+                res.json(counselling);
+            } catch (error) {
+                console.error('Error fetching counselling requests:', error);
+                res.status(500).json({ error: 'Failed to fetch counselling requests' });
+            }
+        });
+
+        // just for not approving 2 counseling at a time
+        app.get('/req-live-uss/:email', async (req, res) => {
+            const professionalEmail = req.params.email;
+            console.log(`Fetching counselling requests for: ${professionalEmail}`);  // Add logging here
+            try {
+                const counselling = await reqCounsellingCollection.find({ professionalEmail }).toArray();
+                if (counselling.length === 0) {
+                    console.log('No counselling requests found for this professional');
+                }
+                res.json(counselling);
+            } catch (error) {
+                console.error('Error fetching counselling requests:', error);
+                res.status(500).json({ error: 'Failed to fetch counselling requests' });
+            }
+        });
+
+
+       
+
+        app.delete('/req-live-delete/:email', async (req, res) => {
+            const professionalEmail = req.params.email;
+            const userEmail = req.query.userEmail; // Extract userEmail from query parameters
+
+            console.log(professionalEmail, userEmail);
+        
+            if (!userEmail) {
+                return res.status(400).send({ message: "User email is required" });
+            }
+        
+            const query = {
+                professionalEmail: professionalEmail,
+                userEmail: userEmail
+            };
+        
+            try {
+                const result = await reqCounsellingCollection.deleteOne(query);
+        
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({ message: "No matching counseling request found." });
+                }
+        
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error deleting item", error });
+            }
+        });
+        
+        
+
+
+        app.get('/req-live-p/:email', async (req, res) => {
+            const professionalEmail = req.params.email;
+            console.log(`Fetching counselling requests for: ${professionalEmail}`);  // Add logging here
+            try {
+                const counselling = await reqCounsellingCollection.find({ professionalEmail }).toArray();
+                if (counselling.length === 0) {
+                    console.log('No counselling requests found for this professional');
+                }
+                res.json(counselling);
+            } catch (error) {
+                console.error('Error fetching counselling requests:', error);
+                res.status(500).json({ error: 'Failed to fetch counselling requests' });
+            }
+        });
+
+        app.delete('/req-live-pr/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };  // Use email directly as a string, no need for ObjectId
+            try {
+                const result = await verifyRequestCollection.deleteOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error deleting item", error });
+            }
+        });
+        
 
         app.post('/professionals-verify-request', async (req, res) => {
             const verifyReq = req.body;
@@ -93,13 +312,6 @@ async function run() {
             const result = await coinCollection.insertOne(coin);
             res.send(result);
         })
-
-        // app.get('/professionals/:email', async (req, res) => {
-        //     const email = req.params.email;
-        //     const query = { email: new ObjectId(email) }
-        //     const result = await professionalsCollection.findOne(query);
-        //     res.send(result);
-        // })
 
         app.get('/professionals/:email', async (req, res) => {
             const email = req.params.email; // Extract email from the route parameter
@@ -139,13 +351,53 @@ async function run() {
                 } else {
                     return res.status(200).send({ status: 0, message: 'Unverified professional' });
                 }
-                
+
                 res.status(404).send({ status: 0, message: 'Professional not found' });
             } catch (error) {
                 console.error('Error fetching professional:', error);
                 res.status(500).send({ message: 'Internal server error', error: error.message });
             }
         });
+
+        app.put('/accept-professionals/:email', async (req, res) => {
+            const email = req.params.email;
+            const filter = { email: email };  // Query directly by email string
+            const options = { upsert: true };
+        
+            const professionalUpdate = {
+                $set: {
+                    isVerify: true,
+                }
+            };
+            
+            try {
+                const result = await professionalsCollection.updateOne(filter, professionalUpdate, options);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ error: 'Failed to update professional status' });
+            }
+        });        
+
+
+
+        app.put('/delete-professionals/:email', async (req, res) => {
+            const email = req.params.email;
+            const filter = { email: email };  // Query directly by email string
+            const options = { upsert: true };
+        
+            const professionalUpdate = {
+                $set: {
+                    isVerify: false,
+                }
+            };
+            
+            try {
+                const result = await professionalsCollection.updateOne(filter, professionalUpdate, options);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ error: 'Failed to update professional status' });
+            }
+        });     
 
 
         app.post('/request-food', async (req, res) => {
@@ -237,12 +489,6 @@ async function run() {
         app.get('/available-foods', async (req, res) => {
             const query = { status: "available" }
             const cursor = foodCollection.find(query);
-            const result = await cursor.toArray();
-            res.send(result);
-        })
-
-        app.get('/food', async (req, res) => {
-            const cursor = foodCollection.find();
             const result = await cursor.toArray();
             res.send(result);
         })
