@@ -56,6 +56,22 @@ app.post('/jwt', (req, res) => {
     res.cookie('token', token, cookieOptions).send({ success: true });
 });
 
+// ---- VideoSDK token (used by kawan-client Professional Support meetings) ----
+// Signs a short-lived token so it never expires inside the client bundle.
+// Needs VIDEOSDK_API_KEY and VIDEOSDK_SECRET from https://app.videosdk.live/api-keys
+app.get('/videosdk-token', (req, res) => {
+    const { VIDEOSDK_API_KEY, VIDEOSDK_SECRET } = process.env;
+    if (!VIDEOSDK_API_KEY || !VIDEOSDK_SECRET) {
+        return res.status(500).send({ message: 'VideoSDK is not configured on the server' });
+    }
+    const token = jwt.sign(
+        { apikey: VIDEOSDK_API_KEY, permissions: ['allow_join'] },
+        VIDEOSDK_SECRET,
+        { algorithm: 'HS256', expiresIn: '2h' }
+    );
+    res.send({ token });
+});
+
 app.post('/logout', (req, res) => {
     res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true });
 });
