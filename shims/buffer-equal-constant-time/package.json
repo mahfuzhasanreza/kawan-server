@@ -1,0 +1,7 @@
+{
+  "name": "buffer-equal-constant-time",
+  "version": "1.0.1",
+  "description": "Node 25+ compatible shim: constant-time buffer comparison via crypto.timingSafeEqual (original relies on removed buffer.SlowBuffer)",
+  "main": "index.js",
+  "license": "BSD-3-Clause"
+}

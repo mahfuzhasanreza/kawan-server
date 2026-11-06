@@ -16,6 +16,7 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(cors({
     origin: ['http://localhost:5173',
+        'http://localhost:5174',
         'http://kawan-one.vercel.app',
         'https://kawan-assist.web.app',
     ],
@@ -24,8 +25,45 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// ---- JWT cookie auth (used by kawan-admin / FoodLink) ----
+const isProduction = process.env.NODE_ENV === 'production';
+const cookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'strict',
+};
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tdfgd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const verifyToken = (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized access' });
+        }
+        req.user = decoded;
+        next();
+    });
+};
+
+app.post('/jwt', (req, res) => {
+    const { email } = req.body || {};
+    if (!email) {
+        return res.status(400).send({ message: 'email is required' });
+    }
+    const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '5h' });
+    res.cookie('token', token, cookieOptions).send({ success: true });
+});
+
+app.post('/logout', (req, res) => {
+    res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true });
+});
+
+
+// Set MONGODB_URI in .env to use a different Atlas cluster; otherwise the original cluster is used.
+const uri = process.env.MONGODB_URI ||
+    `mongodb+srv://${encodeURIComponent(process.env.DB_USER || '')}:${encodeURIComponent(process.env.DB_PASS || '')}@cluster0.tdfgd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -62,6 +100,16 @@ const upload = multer({
 
 async function run() {
     try {
+        try {
+            await client.connect();
+            await client.db('admin').command({ ping: 1 });
+            console.log('Connected to MongoDB');
+        } catch (err) {
+            console.error(`MongoDB connection failed (${err.code || err.name}): ${err.message}`);
+            if (err.code === 'ENOTFOUND') {
+                console.error('The cluster hostname does not exist. Set MONGODB_URI in .env to a valid connection string.');
+            }
+        }
 
         const professionalsCollection = client.db('kawanDB').collection('professionals');
         const contactCollection = client.db('kawanDB').collection('contact');
@@ -72,7 +120,46 @@ async function run() {
         const acceptCounsellingCollection = client.db('kawanDB').collection('acc-counselling');
         const allDoneCounsellingCollection = client.db('kawanDB').collection('all-counselling');
 
+        const foodCollection = client.db('kawanDB').collection('foods');
         const requestedFoodCollection = client.db('kawanDB').collection('requestedFoods');
+
+        // ---- FoodLink (kawan-admin) food routes ----
+        app.get('/food', async (req, res) => {
+            try {
+                const result = await foodCollection.find().toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to fetch foods' });
+            }
+        });
+
+        app.post('/food', verifyToken, async (req, res) => {
+            const newFood = req.body || {};
+            if (req.user.email !== newFood.donatorEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            try {
+                const result = await foodCollection.insertOne({ status: 'available', ...newFood });
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to add food' });
+            }
+        });
+
+        app.get('/food/:id', async (req, res) => {
+            if (!ObjectId.isValid(req.params.id)) {
+                return res.status(400).send({ message: 'Invalid food id' });
+            }
+            try {
+                const result = await foodCollection.findOne({ _id: new ObjectId(req.params.id) });
+                if (!result) {
+                    return res.status(404).send({ message: 'Food not found' });
+                }
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to fetch food' });
+            }
+        });
 
 
         app.get('/verify-professionals-list', async (req, res) => {
@@ -414,6 +501,10 @@ async function run() {
                 additionalNotes,
             } = req.body;
 
+            if (!ObjectId.isValid(foodId)) {
+                return res.status(400).send({ message: 'Invalid food id' });
+            }
+
             try {
                 // Find the food item to ensure it exists and is not already requested
                 const food = await foodCollection.findOne({ _id: new ObjectId(foodId) });
@@ -462,7 +553,7 @@ async function run() {
 
 
         // Endpoint to get food requests by user email
-        app.get('/food-requests', async (req, res) => {
+        app.get('/food-requests', verifyToken, async (req, res) => {
             const userEmail = req.query.userEmail;
 
             if (!userEmail) {
@@ -487,20 +578,25 @@ async function run() {
 
 
         app.get('/available-foods', async (req, res) => {
-            const query = { status: "available" }
-            const cursor = foodCollection.find(query);
-            const result = await cursor.toArray();
-            res.send(result);
+            try {
+                const result = await foodCollection.find({ status: "available" }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to fetch available foods' });
+            }
         })
 
 
 
 
 
-        app.put('/food/:id', async (req, res) => {
+        app.put('/food/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const filter = { _id: new ObjectId(id) };
-            const options = { upsert: true };
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).send({ message: 'Invalid food id' });
+            }
+            const filter = { _id: new ObjectId(id), donatorEmail: req.user.email };
+            const options = {};
             const updatedFood = req.body;
 
 
@@ -534,13 +630,18 @@ async function run() {
 
 
 
-        app.delete('/food/:id', async (req, res) => {
+        app.delete('/food/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: new ObjectId(id) }
-
-
-            const result = await foodCollection.deleteOne(query);
-            res.send(result);
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).send({ message: 'Invalid food id' });
+            }
+            try {
+                // Only the donator can delete their own food
+                const result = await foodCollection.deleteOne({ _id: new ObjectId(id), donatorEmail: req.user.email });
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to delete food' });
+            }
         })
 
         // Send a ping to confirm a successful connection
@@ -552,6 +653,11 @@ async function run() {
     }
 }
 run().catch(console.dir);
+
+// Keep the server alive if a DB operation fails outside a request handler
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled rejection:', err?.message || err);
+});
 
 
 app.get('/', (req, res) => {
