@@ -14,12 +14,16 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // middleware
+// Allowed origins: defaults + comma-separated CORS_ORIGINS env var.
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://kawan-one.vercel.app',
+    'https://kawan-assist.web.app',
+    ...(process.env.CORS_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean),
+];
 app.use(cors({
-    origin: ['http://localhost:5173',
-        'http://localhost:5174',
-        'http://kawan-one.vercel.app',
-        'https://kawan-assist.web.app',
-    ],
+    origin: allowedOrigins,
     credentials: true
 }));
 app.use(express.json());
@@ -79,7 +83,7 @@ app.post('/logout', (req, res) => {
 
 // Set MONGODB_URI in .env to use a different Atlas cluster; otherwise the original cluster is used.
 const uri = process.env.MONGODB_URI ||
-    `mongodb+srv://${encodeURIComponent(process.env.DB_USER || '')}:${encodeURIComponent(process.env.DB_PASS || '')}@cluster0.tdfgd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+    `mongodb+srv://${encodeURIComponent(process.env.DB_USER || '')}:${encodeURIComponent(process.env.DB_PASS || '')}cluster0.g0bvt.mongodb.net`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -116,16 +120,18 @@ const upload = multer({
 
 async function run() {
     try {
-        try {
-            await client.connect();
-            await client.db('admin').command({ ping: 1 });
-            console.log('Connected to MongoDB');
-        } catch (err) {
-            console.error(`MongoDB connection failed (${err.code || err.name}): ${err.message}`);
-            if (err.code === 'ENOTFOUND') {
-                console.error('The cluster hostname does not exist. Set MONGODB_URI in .env to a valid connection string.');
-            }
-        }
+        // Connect in the background so routes are registered synchronously
+        // (required on Vercel, where requests arrive right after cold start).
+        // The driver also connects lazily on the first query.
+        client.connect()
+            .then(() => client.db('admin').command({ ping: 1 }))
+            .then(() => console.log('Connected to MongoDB'))
+            .catch((err) => {
+                console.error(`MongoDB connection failed (${err.code || err.name}): ${err.message}`);
+                if (err.code === 'ENOTFOUND') {
+                    console.error('The cluster hostname does not exist. Set MONGODB_URI in .env to a valid connection string.');
+                }
+            });
 
         const professionalsCollection = client.db('kawanDB').collection('professionals');
         const contactCollection = client.db('kawanDB').collection('contact');
@@ -680,6 +686,10 @@ app.get('/', (req, res) => {
     res.send('kawan server is running');
 })
 
-app.listen(port, () => {
-    //console.log(`movie server is running at PORT: ${port}`);
-})
+if (!process.env.VERCEL) {
+    app.listen(port, () => {
+        //console.log(`movie server is running at PORT: ${port}`);
+    });
+}
+
+module.exports = app;
