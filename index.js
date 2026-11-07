@@ -9,6 +9,7 @@ const multer = require('multer');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const { chatHandler } = require('./chat');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 5000;
@@ -681,6 +682,9 @@ process.on('unhandledRejection', (err) => {
     console.error('Unhandled rejection:', err?.message || err);
 });
 
+
+// AI chatbot (Gemini) used by kawan-client
+app.post('/chat', chatHandler);
 
 app.get('/', (req, res) => {
     res.send('kawan server is running');
